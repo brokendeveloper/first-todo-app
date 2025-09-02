@@ -1,0 +1,69 @@
+# Arquivo gerado em: 2 de setembro de 2025
+# Template para projetos C# e .NET
+
+# Pasta de binários compilados (a mais importante!)
+# Ignora tanto 'bin' quanto 'Bin'
+[Bb]in/
+
+# Pasta de arquivos de compilação intermediários
+# Ignora tanto 'obj' quanto 'Obj'
+[Oo]bj/
+
+# Pasta de publicação
+publish/
+artifacts/
+
+# Arquivos e pastas de IDEs e Editores
+# ------------------------------------
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.[Cc]sproj.user
+*.sln.docstates
+
+# Visual Studio Code (veja a nota abaixo)
+.vscode/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Pacotes (estilo antigo do NuGet com packages.config)
+packages/
+*.nupkg
+
+# Arquivos de Configuração Local e Segredos
+# -------------------------------------------
+# Nunca versione segredos ou configurações de ambiente de desenvolvimento
+secrets.json
+appsettings.Development.json
+
+# Se você usar arquivos de configuração locais com outro nome
+*.Local.json
+
+# Arquivos de Testes e Relatórios de Cobertura
+# ---------------------------------------------
+TestResults/
+*.trx
+*.coverlet.json
+*.opencover.xml
+
+# Arquivos de Sistema Operacional
+# --------------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+
+# Outros
+# ------
+# Arquivos de Log, Cache e Backup
+*.log
+*.cache
+*.bak
