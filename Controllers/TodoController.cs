@@ -2,7 +2,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MyTodo.Data;
 using MyTodo.Models;
+using MyTodo.Models.Enum;
+using MyTodo.Services;
 using MyTodo.ViewsModels;
+using Serilog.Context;
 
 namespace MyTodo.Controllers;
 
@@ -109,22 +112,43 @@ public class TodoController : ControllerBase
     [HttpDelete("todos/{id}")]
     public async Task<IActionResult> DeleteAsync(
         [FromServices] AppDbContext context,
+        [FromServices] ILogger<TodoController> logger,
+        [FromServices] UserContext userContext,
         [FromRoute] int id)
     {
         var todo = await context
             .Todos
             .FirstOrDefaultAsync(x => x.Id == id);
 
+        if (todo == null)
+        {
+            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            {
+                logger.LogWarning("Try of exclusion of one not found Todo. Id: {TodoId}", id);
+            }
+            return NotFound();
+        }
         try
         {
             context.Todos.Remove(todo);
             await context.SaveChangesAsync(); 
             // deveria ter uma mensagem aqui
-            return Ok();
+            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            {
+                logger.LogInformation("The Todo '{TodoTitle}' (Id: {TodoId} has been excluded", todo.Title, todo.Id);
+            }
+            
+            
+            return Ok(new {message = $"Todo '{todo.Title}' excluded sucessfully."});
         }
         catch (Exception e)
         {
-            return BadRequest();
+            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            {
+                logger.LogError(e, "Fail in deletion of Todo {TodoId}", id);
+            }
+
+            return BadRequest(new { message = "Its not possible delete the Todo." });
         }
     }
 }
