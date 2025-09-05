@@ -1,4 +1,6 @@
 using MyTodo.Data;
+using MyTodo.Services;
+using MyTodo.Services.Middleware;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -13,7 +15,9 @@ try
 
     builder.Services.AddControllers();
     builder.Services.AddDbContext<AppDbContext>();
+    builder.Services.AddScoped<UserContext>();
     var app = builder.Build();
+    app.UseMiddleware<UserContextMiddleware>();
     app.UseSerilogRequestLogging();
 
 
