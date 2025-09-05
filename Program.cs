@@ -11,11 +11,18 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
-    builder.Host.UseSerilog((context, config) => { config.ReadFrom.Configuration(context.Configuration); });
+    builder.Host.UseSerilog((context, config) =>
+    {
+        config
+            .ReadFrom.Configuration(context.Configuration)
+            .Enrich.With<UserEnricher>();
+    });
 
+    builder.Services.AddHttpContextAccessor();
     builder.Services.AddControllers();
     builder.Services.AddDbContext<AppDbContext>();
     builder.Services.AddScoped<UserContext>();
+    
     var app = builder.Build();
     app.UseMiddleware<UserContextMiddleware>();
     app.UseSerilogRequestLogging();
