@@ -7,6 +7,7 @@ using Serilog;
 using Serilog.Sinks.PostgreSQL;
 
 
+
 Serilog.Debugging.SelfLog.Enable(Console.Error);
 
 
@@ -35,7 +36,6 @@ try
             .ReadFrom.Configuration(context.Configuration)
             
             .Enrich.With(services.GetRequiredService<UserEnricher>())
-            
             .WriteTo.Console() 
             .WriteTo.PostgreSQL(
                 context.Configuration.GetConnectionString("DefaultConnection"),
