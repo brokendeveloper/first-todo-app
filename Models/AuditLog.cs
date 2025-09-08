@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MyTodo.Models;
 
 [Table(("audit_logs"))]
-public class AuditLogs
+public class AuditLog
 {
     [Column("id")]
     public int Id { get; set; }

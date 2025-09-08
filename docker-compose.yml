@@ -4,6 +4,7 @@ services:
     container_name: api-todo-container
     environment:
       - POSTGRES_PASSWORD=mystrongpassword
+      - POSTGRES_DB=MinhaApiDb
     ports:
       - "5432:5432"
     volumes:
