@@ -2,11 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using MyTodo.Data;
 using MyTodo.Services;
 using MyTodo.Services.Middleware;
+using MyTodo.Services.Enrichers;
 using NpgsqlTypes;
 using Serilog;
 using Serilog.Sinks.PostgreSQL;
 
-
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 Serilog.Debugging.SelfLog.Enable(Console.Error);
 
@@ -22,7 +23,7 @@ try
     
     builder.Host.UseSerilog((context, services, config) =>
     {
-        
+        // Dicionário com nosso mapeamento de colunas customizadas (permanece o mesmo)
         var columnWriters = new Dictionary<string, ColumnWriterBase>
         {
             { "user_id", new SinglePropertyColumnWriter("UserId", PropertyWriteMethod.Raw, NpgsqlDbType.Integer) },
@@ -32,17 +33,29 @@ try
         };
 
         config
-            
+            // Lê configurações básicas como MinimumLevel e Enrich do appsettings.json
             .ReadFrom.Configuration(context.Configuration)
-            
+            // Adiciona nosso enricher que captura o UserId
             .Enrich.With(services.GetRequiredService<UserEnricher>())
-            .WriteTo.Console() 
-            .WriteTo.PostgreSQL(
-                context.Configuration.GetConnectionString("DefaultConnection"),
-                "audit_logs", 
-                columnWriters,
-                needAutoCreateTable: false, 
-                useCopy: false
+
+            // --- CONFIGURAÇÃO DOS SINKS ---
+
+            // Escreve TODOS os logs para o Console
+            .WriteTo.Console()
+
+            // Cria um "sub-pipeline" com um filtro APENAS para o PostgreSQL
+            .WriteTo.Logger(lc => lc
+                // O "porteiro" que só deixa passar logs que tenham a propriedade ActionId
+                .Filter.ByIncludingOnly("ActionId is not null")
+            
+                // Os logs que passam pelo filtro são escritos no banco
+                .WriteTo.PostgreSQL(
+                    context.Configuration.GetConnectionString("DefaultConnection"),
+                    "audit_logs",
+                    columnWriters,
+                    needAutoCreateTable: false,
+                    useCopy: false
+                )
             );
     });
 
@@ -56,6 +69,7 @@ try
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<UserContext>();
     builder.Services.AddTransient<UserEnricher>();
+  //  builder.Services.AddTransient<UtcTimestampEnricher>(); 
 
     var app = builder.Build();
     
