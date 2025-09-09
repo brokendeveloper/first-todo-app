@@ -10,13 +10,14 @@ public class AppDbContext: DbContext
     {
     }
     public DbSet<Todo> Todos { get; set; }
+    public DbSet<User> Users { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Todo>()
             .Property(b => b.Date)
-            .HasDefaultValueSql("now() at time zone 'utc'"); // Específico para PostgreSQL
+            .HasDefaultValueSql("now() at time zone 'utc'"); 
     }
     
 }
