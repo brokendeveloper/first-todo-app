@@ -1,24 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using MyTodo.Data;
 using MyTodo.Services;
+using MyTodo.Services.Enrichers;
 using MyTodo.Services.Middleware;
 using NpgsqlTypes;
 using Serilog;
 using Serilog.Sinks.PostgreSQL;
 
-
-AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
-
 Serilog.Debugging.SelfLog.Enable(Console.Error);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateBootstrapLogger();
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-    
+
     builder.Host.UseSerilog((context, services, config) =>
     {
         var columnWriters = new Dictionary<string, ColumnWriterBase>
@@ -28,27 +24,22 @@ try
             { "created_at", new TimestampColumnWriter(NpgsqlDbType.TimestampTz) },
             { "description", new LogEventSerializedColumnWriter(NpgsqlDbType.Jsonb) }
         };
-
+        
         config
+            
             .ReadFrom.Configuration(context.Configuration)
-            .Enrich.With(services.GetRequiredService<UserEnricher>())
+            .ReadFrom.Services(services)
             .WriteTo.Console()
-            .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly("ActionId is not null")
-                .WriteTo.PostgreSQL(
-                    context.Configuration.GetConnectionString("DefaultConnection"),
-                    "audit_logs",
-                    columnWriters,
-                    needAutoCreateTable: false,
-                    useCopy: false
-                )
+            .WriteTo.PostgreSQL(
+                context.Configuration.GetConnectionString("DefaultConnection"),
+                "audit_logs",
+                columnWriters,
+                needAutoCreateTable: false
             );
     });
 
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(connectionString)
-    );
+    builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
     
     builder.Services.AddControllers();
     builder.Services.AddHttpContextAccessor();
@@ -59,14 +50,13 @@ try
     
     app.UseMiddleware<UserContextMiddleware>();
     app.UseSerilogRequestLogging();
-
     app.MapControllers();
     
-    Log.Information("Aplicação iniciando...");
     app.Run();
 }
 catch (Exception ex)
 {
+    Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
     Log.Fatal(ex, "A aplicação falhou ao iniciar.");
 }
 finally

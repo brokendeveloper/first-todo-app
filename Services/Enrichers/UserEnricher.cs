@@ -1,6 +1,7 @@
-namespace MyTodo.Services;
 using Serilog.Core;
 using Serilog.Events;
+
+namespace MyTodo.Services.Enrichers;
 
 public class UserEnricher : ILogEventEnricher
 {
@@ -18,20 +19,13 @@ public class UserEnricher : ILogEventEnricher
         {
             return;
         }
-    
+
         var userContext = httpContext.RequestServices.GetService<UserContext>();
-   
-        if (userContext?.UserId.HasValue == true)
+
+        if (userContext?.UserId != null)
         {
-            var longUserId = userContext.UserId.Value;
-        
-            
-            if (longUserId <= int.MaxValue && longUserId >= int.MinValue)
-            {
-                var userId = (int)longUserId;
-                var userIdProperty = propertyFactory.CreateProperty("UserId", userId);
-                logEvent.AddPropertyIfAbsent(userIdProperty);
-            }
+            var userIdProperty = propertyFactory.CreateProperty("UserId", userContext.UserId);
+            logEvent.AddPropertyIfAbsent(userIdProperty);
         }
     }
 }

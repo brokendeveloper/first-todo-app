@@ -13,13 +13,11 @@ public class UserContextMiddleware
     {
         if (context.Request.Headers.TryGetValue("X-User-Id", out var userIdValue))
         {
-            if (long.TryParse(userIdValue, out long userId))
+            if (int.TryParse(userIdValue, out int userId))
             {
-                
                 userContext.UserId = userId;
             }
         }
-        
         await _next(context);
     }
 }

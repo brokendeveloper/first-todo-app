@@ -2,5 +2,5 @@ namespace MyTodo.Services;
 
 public class UserContext
 {
-    public long? UserId { get; set; }
+    public int? UserId { get; set; }
 }

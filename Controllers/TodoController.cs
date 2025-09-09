@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MyTodo.Data;
 using MyTodo.Models;
-using MyTodo.Models.Enum; // Importe nosso enum!
+using MyTodo.Models.Enum;
 using MyTodo.Services;
 using MyTodo.ViewsModels;
-using Serilog.Context; // Essencial para usar o LogContext
+using Serilog.Context;
 
 namespace MyTodo.Controllers;
 
@@ -13,15 +13,25 @@ namespace MyTodo.Controllers;
 [Route("v1")]
 public class TodoController : ControllerBase
 {
-    // GET: /v1/todos
+    // GET: /v1/todos - Retorna todos os Todos do usuário logado
     [HttpGet("todos")]
-    public async Task<IActionResult> GetAsync([FromServices] AppDbContext context)
+    public async Task<IActionResult> GetAsync(
+        [FromServices] AppDbContext context,
+        [FromServices] UserContext userContext)
     {
-        var todos = await context.Todos.AsNoTracking().ToListAsync();
+        if (userContext.UserId == null)
+            return Unauthorized("Header X-User-Id é obrigatório.");
+
+        var todos = await context
+            .Todos
+            .AsNoTracking()
+            .Where(x => x.UserId == userContext.UserId)
+            .ToListAsync();
+            
         return Ok(todos);
     }
 
-    // GET: /v1/todos/{id}
+    // GET: /v1/todos/{id} - Retorna um Todo específico do usuário logado
     [HttpGet("todos/{id}")]
     public async Task<IActionResult> GetByIdAsync(
         [FromServices] AppDbContext context,
@@ -29,40 +39,46 @@ public class TodoController : ControllerBase
         [FromServices] UserContext userContext,
         [FromRoute] int id)
     {
+        if (userContext.UserId == null)
+            return Unauthorized("Header X-User-Id é obrigatório.");
+
         var todo = await context
             .Todos
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userContext.UserId);
 
-        // Usando o LogContext para adicionar a ActionId
         using (LogContext.PushProperty("ActionId", (int)LogAction.TodoRetrieved))
         {
             if (todo == null)
             {
-                logger.LogWarning("Todo com Id {TodoId} não encontrado.", id);
+                logger.LogWarning("Todo com Id {TodoId} não encontrado para o usuário {UserId}.", id, userContext.UserId);
                 return NotFound();
             }
             
-            logger.LogInformation("Todo {TodoId} retornado com sucesso.", id);
+            logger.LogInformation("Todo {TodoId} retornado com sucesso para o usuário {UserId}.", id, userContext.UserId);
             return Ok(todo);
         }
     }
 
-    // POST: /v1/todos
+    // POST: /v1/todos - Cria um novo Todo para o usuário logado
     [HttpPost("todos")]
     public async Task<IActionResult> PostAsync(
         [FromServices] AppDbContext context,
         [FromServices] ILogger<TodoController> logger,
+        [FromServices] UserContext userContext,
         [FromBody] CreateTodoViewModel model)
     {
+        if (userContext.UserId == null)
+            return Unauthorized("Header X-User-Id é obrigatório.");
+
         if (!ModelState.IsValid)
             return BadRequest();
 
         var todo = new Todo
         {
-            Date = DateTime.UtcNow, // Use UtcNow para consistência em servidores
             Done = false,
-            Title = model.Title
+            Title = model.Title,
+            UserId = userContext.UserId.Value
         };
 
         try
@@ -83,19 +99,23 @@ public class TodoController : ControllerBase
             return BadRequest();
         }
     }
-
-    // PUT: /v1/todos/{id}
+    
+    // PUT: /v1/todos/{id} - Atualiza um Todo do usuário logado
     [HttpPut("todos/{id}")]
     public async Task<IActionResult> PutAsync(
         [FromServices] AppDbContext context,
         [FromServices] ILogger<TodoController> logger,
+        [FromServices] UserContext userContext,
         [FromBody] CreateTodoViewModel model,
         [FromRoute] int id)
     {
+        if (userContext.UserId == null)
+            return Unauthorized("Header X-User-Id é obrigatório.");
+
         if (!ModelState.IsValid)
             return BadRequest();
 
-        var todo = await context.Todos.FirstOrDefaultAsync(x => x.Id == id);
+        var todo = await context.Todos.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userContext.UserId);
 
         if (todo == null)
             return NotFound();
@@ -120,45 +140,43 @@ public class TodoController : ControllerBase
         }
     }
 
-    // DELETE: /v1/todos/{id}
+    // DELETE: /v1/todos/{id} - Deleta um Todo do usuário logado
     [HttpDelete("todos/{id}")]
     public async Task<IActionResult> DeleteAsync(
         [FromServices] AppDbContext context,
         [FromServices] ILogger<TodoController> logger,
+        [FromServices] UserContext userContext,
         [FromRoute] int id)
     {
+        if (userContext.UserId == null)
+            return Unauthorized("Header X-User-Id é obrigatório.");
+
         var todo = await context
             .Todos
-            .FirstOrDefaultAsync(x => x.Id == id);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userContext.UserId);
 
-        if (todo == null)
+        using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
         {
-            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            if (todo == null)
             {
                 logger.LogWarning("Tentativa de exclusão de um Todo não encontrado. Id: {TodoId}", id);
+                return NotFound();
             }
-            return NotFound();
-        }
 
-        try
-        {
-            context.Todos.Remove(todo);
-            await context.SaveChangesAsync();
-
-            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            try
             {
+                context.Todos.Remove(todo);
+                await context.SaveChangesAsync();
+                
                 logger.LogInformation("O Todo '{TodoTitle}' (Id: {TodoId}) foi excluído.", todo.Title, todo.Id);
+                
+                return Ok(new { message = $"Todo '{todo.Title}' excluído com sucesso." });
             }
-
-            return Ok(new { message = $"Todo '{todo.Title}' excluído com sucesso." });
-        }
-        catch (Exception e)
-        {
-            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+            catch (Exception e)
             {
                 logger.LogError(e, "Falha ao excluir o Todo {TodoId}", id);
+                return BadRequest(new { message = "Não foi possível excluir o todo." });
             }
-            return BadRequest(new { message = "Não foi possível excluir o todo." });
         }
     }
 }
