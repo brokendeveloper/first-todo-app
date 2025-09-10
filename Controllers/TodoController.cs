@@ -5,7 +5,7 @@ using MyTodo.Models;
 using MyTodo.Models.Enum;
 using MyTodo.Services;
 using MyTodo.ViewsModels;
-using Serilog.Context;
+using MyTodo.Extensions; // ✅ Para usar as extensões
 
 namespace MyTodo.Controllers;
 
@@ -17,6 +17,7 @@ public class TodoController : ControllerBase
     [HttpGet("todos")]
     public async Task<IActionResult> GetAsync(
         [FromServices] AppDbContext context,
+        [FromServices] ILogger<TodoController> logger,
         [FromServices] UserContext userContext)
     {
         if (userContext.UserId == null)
@@ -27,6 +28,11 @@ public class TodoController : ControllerBase
             .AsNoTracking()
             .Where(x => x.UserId == userContext.UserId)
             .ToListAsync();
+
+        // ✅ Log simplificado
+        logger.LogAudit(LogAction.AllTodosRetrivied, 
+            "Todos retornados para usuário {UserId}. Total: {TodoCount}", 
+            new { TodoCount = todos.Count });
             
         return Ok(todos);
     }
@@ -47,17 +53,21 @@ public class TodoController : ControllerBase
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userContext.UserId);
 
-        using (LogContext.PushProperty("ActionId", (int)LogAction.TodoRetrieved))
+        if (todo == null)
         {
-            if (todo == null)
-            {
-                logger.LogWarning("Todo com Id {TodoId} não encontrado para o usuário {UserId}.", id, userContext.UserId);
-                return NotFound();
-            }
-            
-            logger.LogInformation("Todo {TodoId} retornado com sucesso para o usuário {UserId}.", id, userContext.UserId);
-            return Ok(todo);
+            // ✅ Log de warning para tentativa de acesso a todo inexistente
+            logger.LogAuditWarning(LogAction.TodoRetrieved,
+                "Todo com Id {TodoId} não encontrado para o usuário", 
+                new { TodoId = id });
+            return NotFound();
         }
+        
+        // ✅ Log de sucesso
+        logger.LogAudit(LogAction.TodoRetrieved,
+            "Todo {TodoId} '{TodoTitle}' retornado com sucesso", 
+            new { TodoId = id, TodoTitle = todo.Title });
+            
+        return Ok(todo);
     }
 
     // POST: /v1/todos - Cria um novo Todo para o usuário logado
@@ -85,17 +95,20 @@ public class TodoController : ControllerBase
         {
             await context.Todos.AddAsync(todo);
             await context.SaveChangesAsync();
-
-            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoCreated))
-            {
-                logger.LogInformation("Novo Todo '{TodoTitle}' (Id: {TodoId}) foi criado.", todo.Title, todo.Id);
-            }
+            
+            // ✅ Log simplificado
+            logger.LogAudit(LogAction.TodoCreated,
+                "Novo Todo '{TodoTitle}' criado com Id {TodoId}",
+                new { TodoTitle = todo.Title, TodoId = todo.Id, OriginalModel = model });
 
             return Created($"v1/todos/{todo.Id}", todo);
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Falha ao criar um novo Todo com título {TodoTitle}", model.Title);
+            // ✅ Log de erro
+            logger.LogAuditError(LogAction.TodoCreated,
+                "Falha ao criar novo Todo '{TodoTitle}'", e,
+                new { TodoTitle = model.Title });
             return BadRequest();
         }
     }
@@ -122,20 +135,27 @@ public class TodoController : ControllerBase
 
         try
         {
+            var oldTitle = todo.Title; // Capturar valor antigo
             todo.Title = model.Title;
             context.Todos.Update(todo);
             await context.SaveChangesAsync();
 
-            using (LogContext.PushProperty("ActionId", (int)LogAction.TodoUpdated))
-            {
-                logger.LogInformation("O Todo '{TodoTitle}' (Id: {TodoId}) foi atualizado.", todo.Title, todo.Id);
-            }
+            // ✅ Log com dados antigos e novos
+            logger.LogAudit(LogAction.TodoUpdated,
+                "Todo {TodoId} atualizado com sucesso",
+                new { 
+                    TodoId = id,
+                    OldTitle = oldTitle,
+                    NewTitle = model.Title 
+                });
 
             return Ok(todo);
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Falha ao atualizar o Todo {TodoId}", id);
+            logger.LogAuditError(LogAction.TodoUpdated,
+                "Falha ao atualizar Todo {TodoId}", e,
+                new { TodoId = id });
             return BadRequest();
         }
     }
@@ -155,28 +175,50 @@ public class TodoController : ControllerBase
             .Todos
             .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userContext.UserId);
 
-        using (LogContext.PushProperty("ActionId", (int)LogAction.TodoDeleted))
+        if (todo == null)
         {
-            if (todo == null)
-            {
-                logger.LogWarning("Tentativa de exclusão de um Todo não encontrado. Id: {TodoId}", id);
-                return NotFound();
-            }
-
-            try
-            {
-                context.Todos.Remove(todo);
-                await context.SaveChangesAsync();
-                
-                logger.LogInformation("O Todo '{TodoTitle}' (Id: {TodoId}) foi excluído.", todo.Title, todo.Id);
-                
-                return Ok(new { message = $"Todo '{todo.Title}' excluído com sucesso." });
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Falha ao excluir o Todo {TodoId}", id);
-                return BadRequest(new { message = "Não foi possível excluir o todo." });
-            }
+            logger.LogAuditWarning(LogAction.TodoDeleted,
+                "Tentativa de exclusão de Todo inexistente {TodoId}",
+                new { TodoId = id });
+            return NotFound();
         }
+
+        try
+        {
+            context.Todos.Remove(todo);
+            await context.SaveChangesAsync();
+            
+            // ✅ Log de sucesso na exclusão
+            logger.LogAudit(LogAction.TodoDeleted,
+                "Todo '{TodoTitle}' (Id: {TodoId}) excluído com sucesso",
+                new { TodoTitle = todo.Title, TodoId = todo.Id });
+            
+            return Ok(new { message = $"Todo '{todo.Title}' excluído com sucesso." });
+        }
+        catch (Exception e)
+        {
+            logger.LogAuditError(LogAction.TodoDeleted,
+                "Falha ao excluir Todo {TodoId}", e,
+                new { TodoId = id, TodoTitle = todo.Title });
+            return BadRequest(new { message = "Não foi possível excluir o todo." });
+        }
+    }
+
+    // ✅ Endpoint de teste com logs estruturados
+    [HttpPost("test-log")]
+    public IActionResult TestLog([FromServices] ILogger<TodoController> logger)
+    {
+        // Teste com diferentes tipos de log estruturado
+        logger.LogAudit(LogAction.TodoCreated, "Teste de criação", 
+            new { TodoTitle = "Todo de Teste", TodoId = 999 });
+        
+        logger.LogAuditWarning(LogAction.TodoUpdated, "Teste de warning",
+            new { TodoId = 888 });
+        
+        logger.LogAuditError(LogAction.TodoDeleted, "Teste de erro", 
+            new Exception("Erro de teste"),
+            new { TodoId = 777, TodoTitle = "Todo com Erro" });
+
+        return Ok("Logs estruturados de teste enviados");
     }
 }
