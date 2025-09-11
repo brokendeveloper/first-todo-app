@@ -1,61 +1,52 @@
-using MyTodo.Models.Enum;
-using Serilog.Context;
-
 namespace MyTodo.Extensions;
+
+using Serilog.Context;
+using MyTodo.Models.Enum;
 
 public static class LoggerExtensions
 {
-    // ✅ Método específico para auditoria que funciona com seu enum
-    public static void LogAudit(this ILogger logger, LogAction action, string message, object data = null)
+    public static void LogAudit(this ILogger logger, LogAction action, string operationDescription, object details = null)
     {
         using (LogContext.PushProperty("ActionId", (int)action))
         {
-            if (data != null)
+            if (details != null)
             {
-                using (LogContext.PushProperty("AuditData", data, true))
-                {
-                    logger.LogInformation(message);
-                }
+                AddDetailsAsProperties(details);
             }
-            else
-            {
-                logger.LogInformation(message);
-            }
+            
+            logger.LogInformation(operationDescription);
         }
     }
 
-    public static void LogAuditWarning(this ILogger logger, LogAction action, string message, object data = null)
+    public static void LogAuditWarning(this ILogger logger, LogAction action, string operationDescription, object details = null)
     {
         using (LogContext.PushProperty("ActionId", (int)action))
         {
-            if (data != null)
-            {
-                using (LogContext.PushProperty("AuditData", data, true))
-                {
-                    logger.LogWarning(message);
-                }
-            }
-            else
-            {
-                logger.LogWarning(message);
-            }
+            if (details != null) AddDetailsAsProperties(details);
+            logger.LogWarning(operationDescription);
         }
     }
 
-    public static void LogAuditError(this ILogger logger, LogAction action, string message, Exception ex = null, object data = null)
+    public static void LogAuditError(this ILogger logger, LogAction action, string operationDescription, Exception ex = null, object details = null)
     {
         using (LogContext.PushProperty("ActionId", (int)action))
         {
-            if (data != null)
+            if (details != null) AddDetailsAsProperties(details);
+            logger.LogError(ex, operationDescription);
+        }
+    }
+
+    private static void AddDetailsAsProperties(object details)
+    {
+        if (details == null) return;
+
+        var properties = details.GetType().GetProperties();
+        foreach (var prop in properties)
+        {
+            var value = prop.GetValue(details);
+            if (value != null)
             {
-                using (LogContext.PushProperty("AuditData", data, true))
-                {
-                    logger.LogError(ex, message);
-                }
-            }
-            else
-            {
-                logger.LogError(ex, message);
+                LogContext.PushProperty(prop.Name, value);
             }
         }
     }
