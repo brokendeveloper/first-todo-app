@@ -3,9 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using MyTodo.Data;
 using MyTodo.Models;
 using MyTodo.Models.Enum;
-using MyTodo.Services;
+using MyTodo.Services; // para ICustomLogger
 using MyTodo.ViewsModels;
-using MyTodo.Extensions; // ✅ Para usar as extensões
 
 namespace MyTodo.Controllers;
 
@@ -13,11 +12,11 @@ namespace MyTodo.Controllers;
 [Route("v1")]
 public class TodoController : ControllerBase
 {
-    // GET: /v1/todos - Retorna todos os Todos do usuário logado
+    // GET: /v1/todos
     [HttpGet("todos")]
     public async Task<IActionResult> GetAsync(
         [FromServices] AppDbContext context,
-        [FromServices] ILogger<TodoController> logger,
+        [FromServices] ICustomLogger logger,
         [FromServices] UserContext userContext)
     {
         if (userContext.UserId == null)
@@ -29,19 +28,17 @@ public class TodoController : ControllerBase
             .Where(x => x.UserId == userContext.UserId)
             .ToListAsync();
 
-        // ✅ Log simplificado
-        logger.LogAudit(LogAction.AllTodosRetrivied, 
-            "Todos retornados para usuário {UserId}. Total: {TodoCount}", 
-            new { TodoCount = todos.Count });
-            
+        await logger.LogAsync(LogAction.AllTodosRetrivied, 
+            new { Message = $"Todos retornados para usuário {userContext.UserId}. Total: {todos.Count}" });
+
         return Ok(todos);
     }
 
-    // GET: /v1/todos/{id} - Retorna um Todo específico do usuário logado
+    // GET: /v1/todos/{id}
     [HttpGet("todos/{id}")]
     public async Task<IActionResult> GetByIdAsync(
         [FromServices] AppDbContext context,
-        [FromServices] ILogger<TodoController> logger,
+        [FromServices] ICustomLogger logger,
         [FromServices] UserContext userContext,
         [FromRoute] int id)
     {
@@ -55,26 +52,22 @@ public class TodoController : ControllerBase
 
         if (todo == null)
         {
-            // ✅ Log de warning para tentativa de acesso a todo inexistente
-            logger.LogAuditWarning(LogAction.TodoRetrieved,
-                "Todo com Id {TodoId} não encontrado para o usuário", 
-                new { TodoId = id });
+            await logger.LogAsync(LogAction.TodoRetrieved,
+                new { Message = $"Todo com Id {id} não encontrado para o usuário {userContext.UserId}" });
             return NotFound();
         }
         
-        // ✅ Log de sucesso
-        logger.LogAudit(LogAction.TodoRetrieved,
-            "Todo {TodoId} '{TodoTitle}' retornado com sucesso", 
-            new { TodoId = id, TodoTitle = todo.Title });
-            
+        await logger.LogAsync(LogAction.TodoRetrieved,
+            new { Message = $"Todo {id} '{todo.Title}' retornado com sucesso" });
+
         return Ok(todo);
     }
 
-    // POST: /v1/todos - Cria um novo Todo para o usuário logado
+    // POST: /v1/todos
     [HttpPost("todos")]
     public async Task<IActionResult> PostAsync(
         [FromServices] AppDbContext context,
-        [FromServices] ILogger<TodoController> logger,
+        [FromServices] ICustomLogger logger,
         [FromServices] UserContext userContext,
         [FromBody] CreateTodoViewModel model)
     {
@@ -95,29 +88,26 @@ public class TodoController : ControllerBase
         {
             await context.Todos.AddAsync(todo);
             await context.SaveChangesAsync();
-            
-            // ✅ Log simplificado
-            logger.LogAudit(LogAction.TodoCreated,
-                "Novo Todo '{TodoTitle}' criado com Id {TodoId}",
+
+            await logger.LogAsync(LogAction.TodoCreated,
                 new { TodoTitle = todo.Title, TodoId = todo.Id, OriginalModel = model });
 
             return Created($"v1/todos/{todo.Id}", todo);
         }
         catch (Exception e)
         {
-            // ✅ Log de erro
-            logger.LogAuditError(LogAction.TodoCreated,
-                "Falha ao criar novo Todo '{TodoTitle}'", e,
-                new { TodoTitle = model.Title });
+            // Aqui você pode querer criar um método adicional no logger para erros com exception, ou logar de outra forma
+            await logger.LogAsync(LogAction.TodoCreated,
+                new { Message = $"Falha ao criar novo Todo '{model.Title}'", Exception = e.Message });
             return BadRequest();
         }
     }
-    
-    // PUT: /v1/todos/{id} - Atualiza um Todo do usuário logado
+
+    // PUT: /v1/todos/{id}
     [HttpPut("todos/{id}")]
     public async Task<IActionResult> PutAsync(
         [FromServices] AppDbContext context,
-        [FromServices] ILogger<TodoController> logger,
+        [FromServices] ICustomLogger logger,
         [FromServices] UserContext userContext,
         [FromBody] CreateTodoViewModel model,
         [FromRoute] int id)
@@ -135,36 +125,29 @@ public class TodoController : ControllerBase
 
         try
         {
-            var oldTitle = todo.Title; // Capturar valor antigo
+            var oldTitle = todo.Title;
             todo.Title = model.Title;
             context.Todos.Update(todo);
             await context.SaveChangesAsync();
 
-            // ✅ Log com dados antigos e novos
-            logger.LogAudit(LogAction.TodoUpdated,
-                "Todo {TodoId} atualizado com sucesso",
-                new { 
-                    TodoId = id,
-                    OldTitle = oldTitle,
-                    NewTitle = model.Title 
-                });
+            await logger.LogAsync(LogAction.TodoUpdated,
+                new { TodoId = id, OldTitle = oldTitle, NewTitle = model.Title });
 
             return Ok(todo);
         }
         catch (Exception e)
         {
-            logger.LogAuditError(LogAction.TodoUpdated,
-                "Falha ao atualizar Todo {TodoId}", e,
-                new { TodoId = id });
+            await logger.LogAsync(LogAction.TodoUpdated,
+                new { Message = $"Falha ao atualizar Todo {id}", Exception = e.Message });
             return BadRequest();
         }
     }
 
-    // DELETE: /v1/todos/{id} - Deleta um Todo do usuário logado
+    // DELETE: /v1/todos/{id}
     [HttpDelete("todos/{id}")]
     public async Task<IActionResult> DeleteAsync(
         [FromServices] AppDbContext context,
-        [FromServices] ILogger<TodoController> logger,
+        [FromServices] ICustomLogger logger,
         [FromServices] UserContext userContext,
         [FromRoute] int id)
     {
@@ -177,9 +160,8 @@ public class TodoController : ControllerBase
 
         if (todo == null)
         {
-            logger.LogAuditWarning(LogAction.TodoDeleted,
-                "Tentativa de exclusão de Todo inexistente {TodoId}",
-                new { TodoId = id });
+            await logger.LogAsync(LogAction.TodoDeleted,
+                new { Message = $"Tentativa de exclusão de Todo inexistente {id}" });
             return NotFound();
         }
 
@@ -187,38 +169,17 @@ public class TodoController : ControllerBase
         {
             context.Todos.Remove(todo);
             await context.SaveChangesAsync();
-            
-            // ✅ Log de sucesso na exclusão
-            logger.LogAudit(LogAction.TodoDeleted,
-                "Todo '{TodoTitle}' (Id: {TodoId}) excluído com sucesso",
+
+            await logger.LogAsync(LogAction.TodoDeleted,
                 new { TodoTitle = todo.Title, TodoId = todo.Id });
-            
+
             return Ok(new { message = $"Todo '{todo.Title}' excluído com sucesso." });
         }
         catch (Exception e)
         {
-            logger.LogAuditError(LogAction.TodoDeleted,
-                "Falha ao excluir Todo {TodoId}", e,
-                new { TodoId = id, TodoTitle = todo.Title });
+            await logger.LogAsync(LogAction.TodoDeleted,
+                new { Message = $"Falha ao excluir Todo {id}", Exception = e.Message, TodoTitle = todo.Title });
             return BadRequest(new { message = "Não foi possível excluir o todo." });
         }
-    }
-
-    // ✅ Endpoint de teste com logs estruturados
-    [HttpPost("test-log")]
-    public IActionResult TestLog([FromServices] ILogger<TodoController> logger)
-    {
-        // Teste com diferentes tipos de log estruturado
-        logger.LogAudit(LogAction.TodoCreated, "Teste de criação", 
-            new { TodoTitle = "Todo de Teste", TodoId = 999 });
-        
-        logger.LogAuditWarning(LogAction.TodoUpdated, "Teste de warning",
-            new { TodoId = 888 });
-        
-        logger.LogAuditError(LogAction.TodoDeleted, "Teste de erro", 
-            new Exception("Erro de teste"),
-            new { TodoId = 777, TodoTitle = "Todo com Erro" });
-
-        return Ok("Logs estruturados de teste enviados");
     }
 }
